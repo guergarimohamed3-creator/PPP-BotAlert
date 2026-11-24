@@ -11,8 +11,8 @@
 #   les ports nécessaires pour accéder via le navigateur ou
 #   des outils comme MQTT Explorer.
 # ============================================================
-
-version: "3.9"
+# NOTE : "version" est obsolète dans les nouvelles versions
+# de Docker Compose (v2+), on ne le met plus.
 
 # ----- Réseau interne partagé par tous les services -----
 networks:
@@ -50,10 +50,13 @@ services:
     networks:
       - botalert-net
     healthcheck:
-      test: ["CMD", "mosquitto_pub", "-h", "localhost", "-t", "healthcheck", "-m", "ping", "-q"]
+      # On vérifie que le processus mosquitto tourne dans le conteneur.
+      # C'est plus fiable que d'envoyer un message MQTT au démarrage.
+      test: ["CMD-SHELL", "cat /proc/1/comm | grep -q mosquitto && exit 0 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 10s
 
   # ===========================================================
   # SERVICE 2 : TIMESCALEDB — La base de données

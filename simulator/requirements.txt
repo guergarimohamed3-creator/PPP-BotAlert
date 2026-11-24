@@ -1,0 +1,2 @@
+paho-mqtt==2.1.0     # Client MQTT Python
+python-dotenv==1.0.1 # Lire le fichier .env

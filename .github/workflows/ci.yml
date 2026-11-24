@@ -1,0 +1,121 @@
+# ============================================================
+# ci.yml — Pipeline d'Intégration Continue (CI/CD)
+# ============================================================
+# EXPLICATION :
+#   Ce fichier est lu par GitHub Actions, un service gratuit
+#   de GitHub qui exécute automatiquement des tâches à chaque
+#   fois que quelqu'un pousse du code (git push) ou crée
+#   une Pull Request.
+#
+#   POURQUOI ? Pour détecter les erreurs avant qu'elles ne
+#   bloquent les autres membres de l'équipe.
+#
+#   Notre pipeline a 3 étapes (jobs) :
+#   1. lint    → Vérifier que le code est propre et bien formaté
+#   2. test    → Lancer les tests automatiques
+#   3. build   → Construire les images Docker pour vérifier qu'elles compilent
+# ============================================================
+
+name: CI Pipeline
+
+# --- Déclencheur : quand ce pipeline s'exécute ---
+on:
+  push:
+    branches: ["**"]           # À chaque push sur n'importe quelle branche
+  pull_request:
+    branches: ["main"]         # À chaque PR vers main
+
+jobs:
+
+  # ===========================================================
+  # JOB 1 : LINT — Vérification qualité du code Python
+  # ===========================================================
+  lint:
+    name: "🔍 Lint & Format Check"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les outils de lint
+        run: pip install ruff black
+
+      - name: Ruff — Vérification des erreurs de style
+        # ruff = linter Python rapide (remplace flake8 + pylint)
+        run: ruff check backend/ simulator/
+
+      - name: Black — Vérification du formatage
+        # black --check = vérifier sans modifier
+        run: black --check backend/ simulator/
+
+  # ===========================================================
+  # JOB 2 : TEST — Tests automatiques du backend
+  # ===========================================================
+  test:
+    name: "🧪 Tests Automatiques"
+    runs-on: ubuntu-latest
+    needs: lint                # S'exécute seulement si le lint réussit
+
+    # On lance TimescaleDB pour les tests d'intégration
+    services:
+      timescaledb:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: botalert
+          POSTGRES_PASSWORD: botalert_secret
+          POSTGRES_DB: botalert_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U botalert"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances du backend
+        run: pip install -r backend/requirements.txt
+
+      - name: Lancer les tests pytest
+        env:
+          POSTGRES_USER: botalert
+          POSTGRES_PASSWORD: botalert_secret
+          POSTGRES_DB: botalert_db
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+        run: pytest backend/tests/ -v --tb=short
+
+  # ===========================================================
+  # JOB 3 : BUILD — Construire les images Docker
+  # ===========================================================
+  build:
+    name: "🐳 Docker Build Check"
+    runs-on: ubuntu-latest
+    needs: test                # S'exécute seulement si les tests réussissent
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Vérifier la syntaxe docker-compose
+        run: docker compose config --quiet
+
+      - name: Build image backend
+        run: docker compose build backend
+
+      - name: Build image simulator
+        run: docker compose build simulator

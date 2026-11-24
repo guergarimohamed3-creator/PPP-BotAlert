@@ -1,0 +1,29 @@
+# ============================================================
+# timescaledb.yaml — Configuration automatique de la datasource
+# ============================================================
+# EXPLICATION :
+#   Normalement, pour connecter Grafana à une base de données,
+#   il faut le faire manuellement dans l'interface graphique.
+#
+#   Le "provisioning" permet de faire cette configuration
+#   AUTOMATIQUEMENT au démarrage du conteneur Grafana.
+#   Haytam n'a donc pas besoin de configurer la connexion
+#   manuellement sur sa machine.
+# ============================================================
+
+apiVersion: 1
+
+datasources:
+  - name: TimescaleDB          # Nom affiché dans Grafana
+    type: postgres             # Type : PostgreSQL (TimescaleDB est compatible)
+    url: timescaledb:5432      # Adresse du service (nom Docker interne)
+    database: botalert_db      # Nom de la base de données
+    user: botalert             # Utilisateur (correspond à .env)
+    secureJsonData:
+      password: botalert_secret  # Mot de passe
+    jsonData:
+      sslmode: disable           # Pas de SSL en développement local
+      postgresVersion: 1600      # Version PostgreSQL 16
+      timescaledb: true          # Activer les fonctionnalités TimescaleDB
+    isDefault: true              # Datasource par défaut dans Grafana
+    editable: true               # Haytam peut la modifier si besoin

@@ -1,0 +1,24 @@
+# ============================================================
+# dashboard_provider.yaml — Chargement automatique des dashboards
+# ============================================================
+# EXPLICATION :
+#   Ce fichier dit à Grafana : "Va chercher les fichiers de
+#   dashboard JSON dans ce dossier et charge-les automatiquement."
+#
+#   Haytam n'a qu'à déposer son fichier dashboard.json dans
+#   infra/grafana/provisioning/dashboards/ et il s'affiche
+#   automatiquement chez tout le monde.
+# ============================================================
+
+apiVersion: 1
+
+providers:
+  - name: BotAlert Dashboards    # Nom du fournisseur (interne)
+    orgId: 1                     # Organisation Grafana par défaut
+    type: file                   # Lire depuis des fichiers
+    disableDeletion: false       # Permettre la suppression via UI
+    updateIntervalSeconds: 10    # Recharger les fichiers toutes les 10 secondes
+    allowUiUpdates: true         # Haytam peut modifier via l'interface
+    options:
+      path: /etc/grafana/provisioning/dashboards  # Dossier à scanner
+      foldersFromFilesStructure: true

@@ -1,0 +1,32 @@
+# ============================================================
+# .gitignore — Fichiers à NE PAS envoyer sur GitHub
+# ============================================================
+
+# --- Variables d'environnement (contient mots de passe !) ---
+.env
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Docker : volumes persistants (données de la DB, Grafana) ---
+# Ces dossiers sont créés par Docker et ne doivent pas être versionnés
+infra/volumes/
+
+# --- Éditeurs et OS ---
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log

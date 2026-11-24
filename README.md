@@ -3,19 +3,19 @@
 ## 📋 Présentation du Projet
 
 Système IoT end-to-end qui surveille le niveau de gaz dans des bouteilles connectées :
-- **Capteurs simulés** → publient via **MQTT**
-- **Backend FastAPI** → abonné MQTT, stocke dans **TimescaleDB**
-- **Grafana Dashboard** → visualisation temps réel + alertes
-- **Telegram Bot** → notifications de fuite et niveau bas
+- **Capteurs simulés / Matériel (ESP32)** → publient via **MQTT**
+- **Backend FastAPI** → abonné MQTT, calculs métiers et stockage dans **TimescaleDB**
+- **Dashboard Grafana** → visualisation temps réel + gestion des seuils
+- **Telegram Bot** → notifications instantanées de fuite et de niveau bas
 
 ## 👥 Équipe
 
 | Rôle | Membre | Responsabilité |
 |------|--------|----------------|
-| Cloud & DevOps | Mohamed Guergari | Infrastructure, Docker, CI/CD, Fleet |
-| Backend & Data | Mohamed ElQadi | FastAPI, MQTT subscriber, logique métier |
-| Dashboard & Alertes | Haytam | Grafana, Telegram bot, démo |
-| Simulateur | (membre 4) | Générateur de données MQTT |
+| Cloud & DevOps | Mohamed Guergari | Infrastructure, Docker Compose, CI/CD, Mode Flotte (Fleet) |
+| Backend & Data | Mohamed ElQadi | FastAPI, MQTT subscriber, calculs (% gaz, jours restants), API REST |
+| Dashboard & Alertes | Haytam | Dashboard Grafana, Bot Telegram, slides et scénario de démo |
+| Device & Hardware | ElMehdi | Virtual bottle (`virtual_bottle.py`), firmware ESP32 (HX711 + MQ-6) |
 
 ## 📡 Contrat MQTT Partagé (NE PAS MODIFIER)
 
@@ -35,15 +35,15 @@ Système IoT end-to-end qui surveille le niveau de gaz dans des bouteilles conne
 
 | Paramètre | Valeur | Description |
 |-----------|--------|-------------|
-| `TARE_KG` | 14 kg | Poids bouteille vide |
-| `BOTTLE_CAPACITY_KG` | 12 kg | Capacité en gaz |
-| `LOW_GAS_THRESHOLD_PCT` | 15 % | Seuil alerte niveau bas |
-| `LEAK_PPM_THRESHOLD` | 1000 ppm | Seuil alerte fuite |
+| `TARE_KG` | 14 kg | Poids de la bouteille vide |
+| `BOTTLE_CAPACITY_KG` | 12 kg | Capacité totale en gaz |
+| `LOW_GAS_THRESHOLD_PCT` | 15 % | Seuil d'alerte niveau bas |
+| `LEAK_PPM_THRESHOLD` | 1000 ppm | Seuil d'alerte fuite (gaz_ppm) |
 
 ## 🚀 Démarrage Rapide (en moins de 5 minutes)
 
 ### Prérequis
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installé
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installé et lancé
 - [Git](https://git-scm.com/) installé
 
 ### Étapes
@@ -53,23 +53,23 @@ Système IoT end-to-end qui surveille le niveau de gaz dans des bouteilles conne
 git clone https://github.com/<org>/botalert.git
 cd botalert
 
-# 2. Créer le fichier de configuration
+# 2. Créer le fichier de configuration local
 cp .env.example .env
 
-# 3. Lancer tous les services
-docker compose up -d
+# 3. Lancer l'infrastructure et la simulation
+docker-compose up -d
 
-# 4. Vérifier que tout est en marche
-docker compose ps
+# 4. Vérifier l'état des conteneurs
+docker-compose ps
 ```
 
 ### Accès aux Interfaces
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Grafana** (dashboard) | http://localhost:3000 | admin / admin_secret |
-| **API Backend** | http://localhost:8000/docs | — |
-| **MQTT Broker** | localhost:1883 | — (accès anonyme) |
+| Service | URL | Identifiants |
+|---------|-----|--------------|
+| **Grafana** (dashboard) | http://localhost:3000 | `admin` / `admin_secret` |
+| **API Backend** (Swagger) | http://localhost:8000/docs | — |
+| **MQTT Broker** (Mosquitto) | localhost:1883 | — (accès anonyme en dev) |
 
 ## 🗂️ Structure du Projet
 
@@ -80,58 +80,77 @@ botalert/
 │   ├── app/
 │   ├── tests/
 │   └── Dockerfile
-├── simulator/             # Simulateur de capteurs IoT
+├── simulator/             # Simulation IoT (ElMehdi & Guergari)
+│   ├── virtual_bottle.py  # Simulation réaliste 1 bouteille (sessions cuisine, fuite)
+│   ├── fleet_test.py      # Benchmark de montée en charge
 │   └── Dockerfile
+├── firmware/              # Code source ESP32 PlatformIO (ElMehdi)
+│   ├── src/main.cpp
+│   ├── include/config.h
+│   └── platformio.ini
 ├── infra/                 # Configuration de l'infrastructure
-│   ├── mosquitto/         # Config broker MQTT
-│   ├── timescaledb/       # Script SQL d'initialisation
-│   └── grafana/           # Provisioning automatique Grafana
-├── docs/                  # Schéma d'architecture + slides
-├── docker-compose.yml     # Orchestration complète
-├── .env.example           # Modèle de configuration
+│   ├── mosquitto/         # mosquitto.conf
+│   ├── timescaledb/       # init.sql (hypertables readings & alerts)
+│   ├── grafana/           # Provisioning datasources & dashboards
+│   └── chaos_test.py      # Test de résilience (arrêt du broker)
+├── docs/                  # Schéma d'architecture & documentation
+├── docker-compose.yml     # Orchestration multi-services
+├── run.ps1                # Script utilitaire PowerShell pour Windows
+├── .env.example           # Modèle de variables d'environnement
 └── README.md
 ```
 
-## 🧪 Tests
+## 🧪 Tests & Vérifications
 
 ```bash
-# Lancer les tests du backend
-docker compose exec backend pytest -v
+# Lancer les tests unitaires du backend
+docker-compose exec backend pytest -v
 
-# Vérifier les logs d'un service
-docker compose logs -f backend
-docker compose logs -f mosquitto
+# Consulter les logs d'un service en temps réel
+docker-compose logs -f backend
+docker-compose logs -f mosquitto
+docker-compose logs -f virtual_bottle
 ```
 
-## 🌍 Mode Flotte (Fleet Mode)
+## 🌍 Mode Flotte (Fleet Mode - 100 à 1000 maisons)
 
-Pour simuler 500 maisons :
+Pour tester la montée en charge avec 500 maisons :
+
+**Sur Linux / macOS / Bash :**
 ```bash
-NUM_DEVICES=500 docker compose up -d simulator
+NUM_DEVICES=500 docker-compose up -d --build simulator
+```
+
+**Sur Windows PowerShell :**
+```powershell
+$env:NUM_DEVICES=500
+docker-compose up -d --build simulator
+# Ou utiliser le script utilitaire :
+.\run.ps1 fleet 500
 ```
 
 ## 🛠️ Commandes Utiles
 
 ```bash
 # Arrêter tous les services
-docker compose down
+docker-compose stop
 
-# Arrêter ET effacer les données (reset complet)
-docker compose down -v
+# Arrêter ET supprimer les volumes (réinitialisation complète)
+docker-compose down -v
 
-# Reconstruire les images après modification du code
-docker compose up -d --build
+# Reconstruire les conteneurs après modification du code
+docker-compose up -d --build
 
-# Voir les métriques de performance
+# Surveiller la consommation CPU / RAM
 docker stats
 ```
 
 ## 📅 Timeline
 
-| Jour | Objectif |
-|------|----------|
-| Mardi soir | ✅ Repo créé, docker-compose skeleton |
-| Mercredi midi | Simulateur publie, backend stocke |
-| Mercredi soir | Flow complet sur un laptop |
-| Jeudi | Dashboard, alertes, fleet mode, répétition |
-| Vendredi | Vérification finale 1h avant la séance |
+| Jour | Échéance | Objectif |
+|------|----------|----------|
+| Mardi soir | ✅ Terminé | Repo créé, contrat partagé validé, docker-compose skeleton & CI |
+| Mercredi midi | ⏳ En cours | Le simulateur publie, le backend ingère et stocke dans TimescaleDB |
+| Mercredi soir | 🎯 Prévu | Flux complet de bout en bout validé sur une seule machine |
+| Jeudi | 🎯 Prévu | Dashboard finalisé, alertes Telegram, Fleet Mode et répétition générale |
+| Vendredi | 🎯 Prévu | Vérification finale 1 heure avant la soutenance |

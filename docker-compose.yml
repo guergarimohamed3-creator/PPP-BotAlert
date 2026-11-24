@@ -155,11 +155,43 @@ services:
       - botalert-net
 
   # ===========================================================
-  # SERVICE 5 : SIMULATOR — Le générateur de données
+  # SERVICE 5 : VIRTUAL BOTTLE — Simulateur réaliste 1 bouteille
   # ===========================================================
-  # RÔLE : Simule les capteurs IoT. Publie des messages MQTT
-  #        comme si c'étaient de vraies bouteilles de gaz.
-  #        NUM_DEVICES contrôle le nombre de "maisons" simulées.
+  # RÔLE : Simule UNE bouteille de gaz réaliste (ElMehdi).
+  #        3 sessions de cuisson par jour, bruit sur le poids,
+  #        changement de bouteille, mode fuite activable.
+  #        C'est ce service qui sera remplacé par le vrai ESP32.
+  # ===========================================================
+  virtual_bottle:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: virtual_bottle
+    restart: unless-stopped
+    command: ["python", "virtual_bottle.py"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      DEVICE_ID: ${DEVICE_ID:-home-001}
+      TARE_KG: ${TARE_KG:-14.0}
+      BOTTLE_CAPACITY_KG: ${BOTTLE_CAPACITY_KG:-12.0}
+      # SPEED_FACTOR: 60 → 1 seconde réelle = 1 minute simulée
+      SPEED_FACTOR: ${SPEED_FACTOR:-1}
+      PUBLISH_INTERVAL_SEC: ${PUBLISH_INTERVAL_SEC:-10}
+      # LEAK_MODE: true → active la simulation de fuite
+      LEAK_MODE: ${LEAK_MODE:-false}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - botalert-net
+
+  # ===========================================================
+  # SERVICE 6 : SIMULATOR — Générateur de flotte (fleet mode)
+  # ===========================================================
+  # RÔLE : Simule N maisons en parallèle pour les benchmarks.
+  #        Différent de virtual_bottle : moins réaliste mais
+  #        conçu pour tester la charge (100, 500, 1000 maisons).
   # ===========================================================
   simulator:
     build:

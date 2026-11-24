@@ -1,0 +1,176 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "BotAlert — Monitoring de performance et fleet IoT",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 15 },
+              { "color": "green",  "value": 50 }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT NOW() as time, ROUND(((weight_kg - 14.0) / 12.0 * 100)::numeric, 1) as \"Gaz restant %\" FROM readings WHERE device_id = 'home-001' ORDER BY ts DESC LIMIT 1",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "🔵 Gaz restant — home-001",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "kg"
+        }
+      },
+      "gridPos": { "h": 8, "w": 10, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list" }
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT ts as time, weight_kg FROM readings WHERE device_id = 'home-001' AND ts >= NOW() - INTERVAL '1 hour' ORDER BY ts",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "title": "📉 Poids de la bouteille — home-001 (1h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red",   "value": 1000 }
+            ]
+          },
+          "unit": "ppm"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT NOW() as time, gas_ppm FROM readings WHERE device_id = 'home-001' ORDER BY ts DESC LIMIT 1",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "☣️ Niveau gaz (ppm) — home-001",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "rawSql": "SELECT time_bucket('1 minute', ts) as time, COUNT(*) as \"Messages reçus/min\" FROM readings WHERE ts >= NOW() - INTERVAL '30 minutes' GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "title": "⚡ Débit MQTT (messages/min)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 8 },
+      "id": 5,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT NOW() as time, COUNT(DISTINCT device_id) as \"Appareils actifs\" FROM readings WHERE ts >= NOW() - INTERVAL '1 minute'",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "🏠 Appareils actifs",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "TimescaleDB" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
+      "id": 6,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Heure", "desc": true }]
+      },
+      "targets": [
+        {
+          "rawSql": "SELECT ts as \"Heure\", device_id as \"Appareil\", alert_type as \"Type\", message as \"Message\", ROUND(value::numeric, 1) as \"Valeur\" FROM alerts ORDER BY ts DESC LIMIT 20",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "title": "🚨 Dernières alertes",
+      "type": "table"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["botalert", "iot", "gas"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "BotAlert — Dashboard IoT",
+  "uid": "botalert-main",
+  "version": 1
+}

@@ -70,6 +70,7 @@ docker-compose ps
 | **Grafana** (dashboard) | http://localhost:3000 | `admin` / `admin_secret` |
 | **API Backend** (Swagger) | http://localhost:8000/docs | — |
 | **MQTT Broker** (Mosquitto) | localhost:1883 | — (accès anonyme en dev) |
+| **Simulation ESP32 (Wokwi)** | [wokwi.com/projects/481623555764025345](https://wokwi.com/projects/481623555764025345) | — (accessible en 1 clic) |
 
 ## 🗂️ Structure du Projet
 

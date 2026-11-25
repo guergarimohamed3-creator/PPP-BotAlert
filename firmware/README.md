@@ -49,8 +49,13 @@ pio device monitor
 4. Calculer : `SCALE_FACTOR = valeur_brute / 1.0`
 5. Mettre à jour `config.h`
 
-## Test en simulation (Wokwi)
+## Simulation Wokwi (Sans Matériel)
 
-Le dossier contient désormais `diagram.json` et `wokwi.toml` :
-1. **Dans VS Code** : Installer l'extension *Wokwi Simulator*, ouvrir `diagram.json`, et cliquer sur le bouton Play vert.
-2. **Sur [wokwi.com](https://wokwi.com)** : Créer un projet ESP32, copier `src/main.cpp` et `include/config.h`. Tourner le potentiomètre relié au GPIO 34 pour simuler la concentration de gaz (au-dessus de 1000 ppm, le buzzer retentit).
+🔗 **Lien direct du projet Wokwi :** [https://wokwi.com/projects/481623555764025345](https://wokwi.com/projects/481623555764025345)
+
+Le dossier contient `diagram.json` et `wokwi.toml` :
+1. **Accès Web direct** : Ouvrez simplement [le lien Wokwi ci-dessus](https://wokwi.com/projects/481623555764025345) et cliquez sur le bouton **Play (▶️)**.
+2. **Dans VS Code** : Installer l'extension *Wokwi Simulator*, ouvrir `diagram.json`, et cliquer sur le bouton Play vert.
+3. **Tester les capteurs en direct** :
+   - Tourner le potentiomètre relié au GPIO 34 pour simuler la concentration de gaz MQ-6 (au-dessus de 1000 ppm, le buzzer virtuel retentit et l'alerte fuite est publiée).
+   - Le firmware se connecte au Wi-Fi virtuel, synchronise l'heure UTC via NTP (`pool.ntp.org`) et publie sur le broker MQTT public `broker.emqx.io:1883` sur le topic `botalert/home-001/telemetry`.

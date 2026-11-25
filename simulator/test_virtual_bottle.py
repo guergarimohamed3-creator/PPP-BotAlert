@@ -2,14 +2,15 @@
 Tests unitaires pour le simulateur de bouteille virtuelle (virtual_bottle.py)
 Compatible avec pytest et unittest.
 """
-import unittest
+
 import json
 import os
 import sys
+import unittest
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
-from virtual_bottle import is_cooking, add_weight_noise, TARE_KG, BOTTLE_CAP_KG
+from virtual_bottle import add_weight_noise, is_cooking
 
 
 class TestVirtualBottle(unittest.TestCase):

@@ -5,6 +5,7 @@ SQUELETTE créé par Mohamed Guergari (DevOps)
 À compléter par Mohamed ElQadi (Backend)
 ================================================
 """
+
 from fastapi import FastAPI
 
 # Création de l'application FastAPI

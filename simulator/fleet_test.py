@@ -18,13 +18,14 @@ Ce script est distinct du simulateur principal. Il est utilisé
 uniquement pour les benchmarks de performance à présenter au prof.
 ======================================================
 """
+
 import argparse
 import json
+import logging
+import random
 import threading
 import time
-import random
-import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
 
@@ -36,38 +37,42 @@ log = logging.getLogger(__name__)
 
 MQTT_HOST = "localhost"
 MQTT_PORT = 1883
-TARE_KG   = 14.0
-CAP_KG    = 12.0
+TARE_KG = 14.0
+CAP_KG = 12.0
 
 # Métriques partagées entre threads
 _lock = threading.Lock()
 _metrics = {
     "published": 0,
-    "errors":    0,
+    "errors": 0,
     "start_time": None,
 }
 
 
 def device_worker(device_id: str, interval: float, stop_event: threading.Event):
     """Thread représentant un capteur IoT."""
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"fleet-{device_id}")
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2, client_id=f"fleet-{device_id}"
+    )
     try:
         client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         client.loop_start()
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         log.error(f"Connexion impossible pour {device_id}: {e}")
         return
 
     weight = TARE_KG + random.uniform(2, CAP_KG)
-    topic  = f"botalert/{device_id}/telemetry"
+    topic = f"botalert/{device_id}/telemetry"
 
     while not stop_event.is_set():
-        payload = json.dumps({
-            "device_id": device_id,
-            "ts":        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "weight_kg": round(weight, 2),
-            "gas_ppm":   random.randint(0, 50),
-        })
+        payload = json.dumps(
+            {
+                "device_id": device_id,
+                "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "weight_kg": round(weight, 2),
+                "gas_ppm": random.randint(0, 50),
+            }
+        )
         result = client.publish(topic, payload, qos=1)
         with _lock:
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
@@ -93,8 +98,8 @@ def run_fleet_test(num_devices: int, duration_sec: int, interval: float):
     threads = []
 
     _metrics["start_time"] = time.time()
-    _metrics["published"]  = 0
-    _metrics["errors"]     = 0
+    _metrics["published"] = 0
+    _metrics["errors"] = 0
 
     # Démarrer tous les threads d'appareils
     for i in range(1, num_devices + 1):
@@ -160,15 +165,23 @@ def run_fleet_test(num_devices: int, duration_sec: int, interval: float):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BotAlert Fleet Load Test")
-    parser.add_argument("--devices",  type=int,   default=100,  help="Nombre d'appareils")
-    parser.add_argument("--duration", type=int,   default=60,   help="Durée du test (secondes)")
-    parser.add_argument("--interval", type=float, default=5.0,  help="Intervalle de publication (secondes)")
+    parser.add_argument("--devices", type=int, default=100, help="Nombre d'appareils")
+    parser.add_argument(
+        "--duration", type=int, default=60, help="Durée du test (secondes)"
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=5.0,
+        help="Intervalle de publication (secondes)",
+    )
     args = parser.parse_args()
 
     results = run_fleet_test(args.devices, args.duration, args.interval)
 
     # Sauvegarder les résultats en JSON (pour Grafana/rapport)
     import json
+
     output_file = f"fleet_results_{args.devices}_devices.json"
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2)

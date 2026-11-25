@@ -17,13 +17,14 @@ FLEET MODE :
     Le script utilise des threads pour publier en parallèle.
 ==========================================================
 """
-import os
+
 import json
-import time
-import random
 import logging
+import os
+import random
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import UTC, datetime
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -39,12 +40,12 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # --- Configuration depuis les variables d'environnement ---
-MQTT_HOST           = os.getenv("MQTT_HOST", "localhost")
-MQTT_PORT           = int(os.getenv("MQTT_PORT", 1883))
-NUM_DEVICES         = int(os.getenv("NUM_DEVICES", 1))
-PUBLISH_INTERVAL    = float(os.getenv("PUBLISH_INTERVAL_SEC", 5))
-TARE_KG             = float(os.getenv("TARE_KG", 14.0))
-BOTTLE_CAPACITY_KG  = float(os.getenv("BOTTLE_CAPACITY_KG", 12.0))
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+NUM_DEVICES = int(os.getenv("NUM_DEVICES", "1"))
+PUBLISH_INTERVAL = float(os.getenv("PUBLISH_INTERVAL_SEC", "5"))
+TARE_KG = float(os.getenv("TARE_KG", "14.0"))
+BOTTLE_CAPACITY_KG = float(os.getenv("BOTTLE_CAPACITY_KG", "12.0"))
 
 # Compteur global pour les métriques de performance
 _lock = threading.Lock()
@@ -66,7 +67,9 @@ def make_mqtt_client(client_id: str) -> mqtt.Client:
 
     def on_disconnect(c, userdata, flags, reason_code, properties):
         if reason_code != 0:
-            log.warning(f"[{client_id}] Déconnecté (code {reason_code}), reconnexion...")
+            log.warning(
+                f"[{client_id}] Déconnecté (code {reason_code}), reconnexion..."
+            )
 
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
@@ -79,8 +82,10 @@ def make_mqtt_client(client_id: str) -> mqtt.Client:
         try:
             client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
             break
-        except Exception as e:
-            log.warning(f"[{client_id}] Tentative {attempt+1}/10 échouée : {e}. Retry dans 3s...")
+        except (OSError, RuntimeError) as e:
+            log.warning(
+                f"[{client_id}] Tentative {attempt+1}/10 échouée : {e}. Retry dans 3s..."
+            )
             time.sleep(3)
 
     return client
@@ -113,7 +118,7 @@ def run_device(device_id: str):
             if random.random() < 0.01:
                 gas_ppm = random.randint(1200, 3000)  # Fuite détectée !
             else:
-                gas_ppm = random.randint(0, 50)       # Normal
+                gas_ppm = random.randint(0, 50)  # Normal
 
             # --- Remplacement automatique de bouteille ---
             # Si la bouteille est vide (poids ≈ tare), on la "change"
@@ -124,7 +129,7 @@ def run_device(device_id: str):
             # --- Construire le payload JSON (contrat partagé) ---
             payload = {
                 "device_id": device_id,
-                "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "weight_kg": round(weight_kg, 2),
                 "gas_ppm": gas_ppm,
             }
@@ -141,13 +146,15 @@ def run_device(device_id: str):
             # Log seulement pour les 3 premiers appareils (sinon trop verbeux en fleet)
             if int(device_id.split("-")[-1]) <= 3:
                 gas_status = "🔴 FUITE!" if gas_ppm > 1000 else "✅"
-                remaining_pct = round((weight_kg - TARE_KG) / BOTTLE_CAPACITY_KG * 100, 1)
+                remaining_pct = round(
+                    (weight_kg - TARE_KG) / BOTTLE_CAPACITY_KG * 100, 1
+                )
                 log.info(
                     f"[{device_id}] {remaining_pct}% gaz | "
                     f"{weight_kg}kg | {gas_ppm}ppm {gas_status}"
                 )
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             log.error(f"[{device_id}] Erreur publication : {e}")
             with _lock:
                 _stats["errors"] += 1
@@ -160,7 +167,6 @@ def print_stats():
     while True:
         time.sleep(30)
         with _lock:
-            total = _stats["published"] + _stats["errors"]
             rate = _stats["published"] / 30 if _stats["published"] > 0 else 0
             log.info(
                 f"📊 STATS | {NUM_DEVICES} appareils | "
@@ -175,7 +181,7 @@ def print_stats():
 
 def main():
     log.info("=" * 60)
-    log.info(f"🚀 BotAlert Simulator démarré")
+    log.info("🚀 BotAlert Simulator démarré")
     log.info(f"   Appareils  : {NUM_DEVICES}")
     log.info(f"   Broker     : {MQTT_HOST}:{MQTT_PORT}")
     log.info(f"   Intervalle : {PUBLISH_INTERVAL}s")

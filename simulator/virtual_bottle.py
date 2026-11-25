@@ -1,5 +1,5 @@
-"""
-virtual_bottle.py — Simulateur réaliste d'une bouteille de gaz
+"""virtual_bottle.py — Simulateur réaliste d'une bouteille de gaz.
+
 ==============================================================
 Auteur    : ElMehdi (Device / Simulateur) & Mohamed Guergari (DevOps)
 
@@ -33,15 +33,15 @@ CONTRAT MQTT :
 ==============================================================
 """
 
-import os
-import sys
-import json
-import time
-import random
-import logging
 import argparse
+import json
+import logging
+import os
+import random
 import socket
-from datetime import datetime, timezone, timedelta
+import sys
+import time
+from datetime import UTC, datetime, timedelta
 
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -57,12 +57,16 @@ log = logging.getLogger(__name__)
 
 # ─── Configuration (supporte les deux conventions de nommage) ────────────────
 MQTT_HOST = os.getenv("MQTT_HOST", os.getenv("MQTT_BROKER", "localhost"))
-MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 DEVICE_ID = os.getenv("DEVICE_ID", "home-001")
-TARE_KG = float(os.getenv("TARE_KG", os.getenv("TARE_WEIGHT", 14.0)))
-BOTTLE_CAP_KG = float(os.getenv("BOTTLE_CAPACITY_KG", os.getenv("GAS_CAPACITY", 12.0)))
-SPEED_FACTOR = float(os.getenv("SPEED_FACTOR", os.getenv("SPEEDUP", 60.0)))
-PUBLISH_INTERVAL = float(os.getenv("PUBLISH_INTERVAL_SEC", os.getenv("PUBLISH_INTERVAL", 10.0)))
+TARE_KG = float(os.getenv("TARE_KG", os.getenv("TARE_WEIGHT", "14.0")))
+BOTTLE_CAP_KG = float(
+    os.getenv("BOTTLE_CAPACITY_KG", os.getenv("GAS_CAPACITY", "12.0"))
+)
+SPEED_FACTOR = float(os.getenv("SPEED_FACTOR", os.getenv("SPEEDUP", "60.0")))
+PUBLISH_INTERVAL = float(
+    os.getenv("PUBLISH_INTERVAL_SEC", os.getenv("PUBLISH_INTERVAL", "10.0"))
+)
 LEAK_MODE_ENV = os.getenv("LEAK_MODE", "false").lower() in ("true", "1", "yes")
 
 # ─── Sessions de cuisson quotidiennes (heures au format 24h) ─────────────────
@@ -89,6 +93,7 @@ def add_weight_noise(weight: float) -> float:
 
 class NonBlockingKeyboard:
     """Gestionnaire de saisie clavier non-bloquante (Windows / Linux / Docker)."""
+
     def __init__(self):
         self.is_windows = os.name == "nt"
         self.is_tty = sys.stdin.isatty()
@@ -98,9 +103,10 @@ class NonBlockingKeyboard:
             try:
                 import termios
                 import tty
+
                 self.old_settings = termios.tcgetattr(sys.stdin)
                 tty.setcbreak(sys.stdin.fileno())
-            except Exception:
+            except (ImportError, OSError):
                 self.is_tty = False
 
     def get_key(self):
@@ -110,18 +116,20 @@ class NonBlockingKeyboard:
         if self.is_windows:
             try:
                 import msvcrt
+
                 if msvcrt.kbhit():
                     ch = msvcrt.getch()
                     return ch.decode("utf-8", errors="ignore").lower()
-            except Exception:
+            except (ImportError, OSError):
                 return None
         else:
             try:
                 import select
+
                 rlist, _, _ = select.select([sys.stdin], [], [], 0)
                 if rlist:
                     return sys.stdin.read(1).lower()
-            except Exception:
+            except (ImportError, OSError):
                 return None
         return None
 
@@ -129,8 +137,9 @@ class NonBlockingKeyboard:
         if not self.is_windows and self.old_settings and self.is_tty:
             try:
                 import termios
+
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-            except Exception:
+            except (ImportError, OSError):
                 pass
 
 
@@ -140,15 +149,19 @@ def is_broker_available(host: str, port: int, timeout: float = 0.8) -> bool:
         sock = socket.create_connection((host, port), timeout=timeout)
         sock.close()
         return True
-    except Exception:
+    except OSError:
         return False
 
 
-def connect_mqtt(host: str, port: int, client_id: str) -> tuple[mqtt.Client | None, bool]:
+def connect_mqtt(
+    host: str, port: int, client_id: str
+) -> tuple[mqtt.Client | None, bool]:
     """Tente de connecter le client MQTT avec détection hors-ligne propre."""
     if not is_broker_available(host, port):
         log.warning(f"⚠️  Broker MQTT injoignable sur {host}:{port}")
-        log.info("💡 Mode autonome actif : la simulation tourne en direct dans le terminal.")
+        log.info(
+            "💡 Mode autonome actif : la simulation tourne en direct dans le terminal."
+        )
         log.info("   (Démarrez Mosquitto ou Docker pour publier sur le réseau)\n")
         return None, False
 
@@ -169,16 +182,25 @@ def connect_mqtt(host: str, port: int, client_id: str) -> tuple[mqtt.Client | No
         client.connect(host, port, keepalive=60)
         client.loop_start()
         return client, True
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         log.warning(f"Échec de connexion MQTT ({e}), passage en mode démo autonome.")
         return None, False
 
 
 def main():
     parser = argparse.ArgumentParser(description="BotAlert Virtual Bottle Simulator")
-    parser.add_argument("--leak", action="store_true", help="Démarrer en mode fuite (gas_ppm > 1000)")
-    parser.add_argument("--speedup", type=float, default=SPEED_FACTOR, help="Facteur d'accélération (défaut: 60)")
-    parser.add_argument("--device-id", default=DEVICE_ID, help="Identifiant de la bouteille")
+    parser.add_argument(
+        "--leak", action="store_true", help="Démarrer en mode fuite (gas_ppm > 1000)"
+    )
+    parser.add_argument(
+        "--speedup",
+        type=float,
+        default=SPEED_FACTOR,
+        help="Facteur d'accélération (défaut: 60)",
+    )
+    parser.add_argument(
+        "--device-id", default=DEVICE_ID, help="Identifiant de la bouteille"
+    )
     args = parser.parse_args()
 
     leak_mode = args.leak or LEAK_MODE_ENV
@@ -191,10 +213,14 @@ def main():
     log.info(f"   Device ID     : {device_id}")
     log.info(f"   Broker MQTT   : {MQTT_HOST}:{MQTT_PORT}")
     log.info(f"   Poids Tare    : {TARE_KG} kg (bouteille vide)")
-    log.info(f"   Capacité Gaz  : {BOTTLE_CAP_KG} kg (bouteille pleine = {TARE_KG + BOTTLE_CAP_KG} kg)")
+    log.info(
+        f"   Capacité Gaz  : {BOTTLE_CAP_KG} kg (bouteille pleine = {TARE_KG + BOTTLE_CAP_KG} kg)"
+    )
     log.info(f"   Intervalle    : {PUBLISH_INTERVAL}s")
     log.info(f"   Accélération  : x{speedup:.0f} (1s réelle = {speedup:.0f}s simulées)")
-    log.info(f"   Mode Fuite    : {'🔴 ACTIVÉ (>1000 ppm)' if leak_mode else '🟢 Normal'}")
+    log.info(
+        f"   Mode Fuite    : {'🔴 ACTIVÉ (>1000 ppm)' if leak_mode else '🟢 Normal'}"
+    )
     log.info("-" * 60)
     log.info("Touches interactives dans le terminal :")
     log.info("  [ l ] Basculer le mode fuite (gas_ppm > 1000)")
@@ -204,12 +230,14 @@ def main():
     log.info("  [ q ] Quitter")
     log.info("=" * 60 + "\n")
 
-    client, is_connected = connect_mqtt(MQTT_HOST, MQTT_PORT, f"virtual-bottle-{device_id}")
+    client, is_connected = connect_mqtt(
+        MQTT_HOST, MQTT_PORT, f"virtual-bottle-{device_id}"
+    )
     topic = f"botalert/{device_id}/telemetry"
 
     # État initial de la bouteille
     gas_kg = BOTTLE_CAP_KG * 0.85
-    sim_now = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
+    sim_now = datetime.now(UTC).replace(hour=7, minute=0, second=0, microsecond=0)
     bottle_changes = 0
 
     kbd = NonBlockingKeyboard()
@@ -222,21 +250,37 @@ def main():
             if key:
                 if key == "l":
                     leak_mode = not leak_mode
-                    state_str = "🔴 ACTIVÉ (PPM > 1000)" if leak_mode else "🟢 DÉSACTIVÉ (Normal)"
+                    state_str = (
+                        "🔴 ACTIVÉ (PPM > 1000)"
+                        if leak_mode
+                        else "🟢 DÉSACTIVÉ (Normal)"
+                    )
                     print(f"\n[ALERTE] Mode fuite : {state_str}\n", flush=True)
                 elif key == "c":
                     bottle_changes += 1
                     gas_kg = BOTTLE_CAP_KG
-                    print(f"\n[ÉVÉNEMENT] 🔄 Bouteille #{bottle_changes} changée ! Nouveau poids : {TARE_KG + gas_kg:.1f} kg (Saut > 5kg détecté)\n", flush=True)
+                    print(
+                        f"\n[ÉVÉNEMENT] 🔄 Bouteille #{bottle_changes} changée ! Nouveau poids : {TARE_KG + gas_kg:.1f} kg (Saut > 5kg détecté)\n",
+                        flush=True,
+                    )
                 elif key == "k":
                     manual_cooking = not manual_cooking
-                    print(f"\n[CUISSON] Mode forcé : {'ALLUMÉ' if manual_cooking else 'ARRÊTÉ'}\n", flush=True)
+                    print(
+                        f"\n[CUISSON] Mode forcé : {'ALLUMÉ' if manual_cooking else 'ARRÊTÉ'}\n",
+                        flush=True,
+                    )
                 elif key in ("+", "="):
                     speedup = min(3600.0, speedup * 2)
-                    print(f"\n[VITESSE] Accélération portée à x{speedup:.0f}\n", flush=True)
+                    print(
+                        f"\n[VITESSE] Accélération portée à x{speedup:.0f}\n",
+                        flush=True,
+                    )
                 elif key in ("-", "_"):
                     speedup = max(1.0, speedup / 2)
-                    print(f"\n[VITESSE] Accélération réduite à x{speedup:.0f}\n", flush=True)
+                    print(
+                        f"\n[VITESSE] Accélération réduite à x{speedup:.0f}\n",
+                        flush=True,
+                    )
                 elif key == "q":
                     print("\n[STOP] Arrêt demandé par l'utilisateur.\n", flush=True)
                     break
@@ -258,10 +302,12 @@ def main():
                 consumed = 0.0
                 if is_active_cooking:
                     active_rate = rate_per_hour if cooking_sched else 0.25
-                    consumed += (active_rate * (sim_elapsed_seconds / 3600.0))
+                    consumed += active_rate * (sim_elapsed_seconds / 3600.0)
 
                 if leak_mode:
-                    consumed += (1.20 * (sim_elapsed_seconds / 3600.0))  # Le gaz s'échappe vite lors d'une fuite
+                    consumed += 1.20 * (
+                        sim_elapsed_seconds / 3600.0
+                    )  # Le gaz s'échappe vite lors d'une fuite
 
                 gas_kg = max(0.0, gas_kg - consumed)
 
@@ -269,7 +315,9 @@ def main():
                 if gas_kg <= 0.05:
                     bottle_changes += 1
                     gas_kg = BOTTLE_CAP_KG
-                    log.info(f"🔄 Bouteille vide → remplacement automatique #{bottle_changes} (Poids: {TARE_KG + gas_kg:.1f} kg)")
+                    log.info(
+                        f"🔄 Bouteille vide → remplacement automatique #{bottle_changes} (Poids: {TARE_KG + gas_kg:.1f} kg)"
+                    )
 
                 # Bruit du capteur de poids
                 weight = TARE_KG + gas_kg
@@ -284,7 +332,6 @@ def main():
                 pct = round((gas_kg / BOTTLE_CAP_KG) * 100.0, 1)
 
                 # Contrat JSON partagé
-                # {"device_id":"home-001","ts":"2026-11-25T18:30:00Z","weight_kg":18.4,"gas_ppm":12}
                 payload = {
                     "device_id": device_id,
                     "ts": sim_now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -297,12 +344,20 @@ def main():
                 if client and is_connected:
                     try:
                         client.publish(topic, payload_str, qos=1)
-                    except Exception:
+                    except OSError:
                         pass
 
                 # Affichage des logs
-                status = "🔴 FUITE !" if gas_ppm > 1000 else ("🟡 GAZ BAS (<15%)" if pct < 15 else "🟢 OK")
-                session_desc = f"🍳 {meal_name}" if cooking_sched else ("🍳 Cuisson manuelle" if manual_cooking else "💤 Repos")
+                status = (
+                    "🔴 FUITE !"
+                    if gas_ppm > 1000
+                    else ("🟡 GAZ BAS (<15%)" if pct < 15 else "🟢 OK")
+                )
+                session_desc = (
+                    f"🍳 {meal_name}"
+                    if cooking_sched
+                    else ("🍳 Cuisson manuelle" if manual_cooking else "💤 Repos")
+                )
 
                 log.info(
                     f"[{sim_now.strftime('%H:%M:%S')}] {status} | "

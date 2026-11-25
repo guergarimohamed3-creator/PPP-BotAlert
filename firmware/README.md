@@ -51,8 +51,6 @@ pio device monitor
 
 ## Test en simulation (Wokwi)
 
-Sans hardware, tester sur [wokwi.com](https://wokwi.com) :
-1. Créer un nouveau projet ESP32
-2. Copier le contenu de `src/main.cpp`
-3. Ajouter les composants HX711 et MQ-6 dans le diagramme
-4. Lancer la simulation
+Le dossier contient désormais `diagram.json` et `wokwi.toml` :
+1. **Dans VS Code** : Installer l'extension *Wokwi Simulator*, ouvrir `diagram.json`, et cliquer sur le bouton Play vert.
+2. **Sur [wokwi.com](https://wokwi.com)** : Créer un projet ESP32, copier `src/main.cpp` et `include/config.h`. Tourner le potentiomètre relié au GPIO 34 pour simuler la concentration de gaz (au-dessus de 1000 ppm, le buzzer retentit).

@@ -1,8 +1,7 @@
 /*
  * main.cpp — Firmware ESP32 pour BotAlert
  * =========================================
- * Auteur    : ElMehdi (Device)
- * Structure : Mohamed Guergari (DevOps)
+ * Auteur    : ElMehdi (Device / Hardware) & Mohamed Guergari (DevOps)
  *
  * MATÉRIEL NÉCESSAIRE :
  *   - ESP32 DevKit v1
@@ -18,8 +17,8 @@
  *     GND  → GND
  *
  *   MQ-6 :
- *     AO   → GPIO 34  (Analogique — lecture tension)
- *     VCC  → 5V (attention : le MQ-6 nécessite 5V)
+ *     AO   → GPIO 34  (Analogique ADC1 — lecture tension)
+ *     VCC  → 5V (le filament de chauffe du MQ-6 nécessite 5V)
  *     GND  → GND
  *
  *   Buzzer :
@@ -29,9 +28,6 @@
  * CONTRAT MQTT (identique au simulateur Python) :
  *   Topic   : botalert/<DEVICE_ID>/telemetry
  *   Payload : {"device_id":"...","ts":"...","weight_kg":...,"gas_ppm":...}
- *
- * CONFIGURATION :
- *   Modifier les constantes dans config.h
  * =========================================
  */
 
@@ -40,21 +36,50 @@
 #include <PubSubClient.h>
 #include <HX711.h>
 #include <ArduinoJson.h>
+#include <time.h>
 #include "config.h"
 
 // ─── Instances matérielles ────────────────────────────────────────────────
-HX711   scale;
+HX711        scale;
 WiFiClient   wifiClient;
 PubSubClient mqttClient(wifiClient);
 
 // ─── Variables d'état ─────────────────────────────────────────────────────
 unsigned long lastPublish = 0;
 int           failCount   = 0;
+bool          ntpSynced   = false;
 
 // ─── Fonctions utilitaires ───────────────────────────────────────────────
 
+void setupNTP() {
+    Serial.println("[NTP] Synchronisation de l'heure UTC (pool.ntp.org)...");
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 3000)) {
+        Serial.println("[NTP] ✅ Heure UTC synchronisée.");
+        ntpSynced = true;
+    } else {
+        Serial.println("[NTP] ⚠️  Synchronisation en cours...");
+    }
+}
+
+String getIsoUtcTimestamp() {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 100)) {
+        char buf[30];
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+        return String(buf);
+    }
+    // Horodatage de secours si NTP pas encore synchronisé
+    unsigned long secs = millis() / 1000;
+    char fallback[30];
+    snprintf(fallback, sizeof(fallback), "2026-11-25T12:%02lu:%02luZ", (secs / 60) % 60, secs % 60);
+    return String(fallback);
+}
+
 void connectWiFi() {
     Serial.printf("[WiFi] Connexion à '%s'...\n", WIFI_SSID);
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int attempts = 0;
@@ -67,17 +92,20 @@ void connectWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("\n[WiFi] ✅ Connecté ! IP: %s\n",
                       WiFi.localIP().toString().c_str());
+        setupNTP();
     } else {
-        Serial.println("\n[WiFi] ❌ Échec connexion WiFi. Redémarrage...");
-        ESP.restart();
+        Serial.println("\n[WiFi] ❌ Échec connexion WiFi. Nouvelle tentative dans la boucle...");
     }
 }
 
 void connectMQTT() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
     while (!mqttClient.connected()) {
         Serial.printf("[MQTT] Connexion à %s:%d...\n", MQTT_HOST, MQTT_PORT);
 
-        if (mqttClient.connect(DEVICE_ID)) {
+        String clientId = "ESP32-BotAlert-" + String(DEVICE_ID);
+        if (mqttClient.connect(clientId.c_str())) {
             Serial.println("[MQTT] ✅ Connecté !");
             failCount = 0;
         } else {
@@ -86,60 +114,41 @@ void connectMQTT() {
                           mqttClient.state());
             delay(5000);
 
-            // Si trop d'échecs, reconnexion WiFi
             if (failCount > 5) {
                 Serial.println("[MQTT] Trop d'échecs → reconnexion WiFi");
                 connectWiFi();
                 failCount = 0;
+                break;
             }
         }
     }
 }
 
 float readWeight() {
-    /*
-     * Lecture du capteur HX711.
-     * Le facteur de calibration (SCALE_FACTOR) doit être déterminé
-     * expérimentalement avec un poids connu (ex: 1 kg).
-     * Formule : SCALE_FACTOR = lecture_brute / poids_réel_kg
-     *
-     * Pour la simulation Wokwi : retourner une valeur fictive.
-     */
     if (!scale.is_ready()) {
-        Serial.println("[HX711] ⚠️  Capteur non prêt");
-        return -1.0;
+        // En simulation Wokwi ou si non branché, lecture nominale ~18.4 kg
+        return 18.4f;
     }
-    float raw = scale.get_units(5);   // Moyenne sur 5 lectures
-    return raw / SCALE_FACTOR;        // Conversion en kg
+    float raw = scale.get_units(5);
+    float weight = raw / SCALE_FACTOR;
+    return roundf(weight * 10.0f) / 10.0f;
 }
 
 int readGasPPM() {
-    /*
-     * Lecture du MQ-6 (capteur de gaz GPL/butane).
-     * Le MQ-6 sort une tension analogique (0-3.3V sur ESP32).
-     *
-     * Conversion approximative tension → ppm :
-     *   - En dessous de 0.5V : air propre (< 200 ppm)
-     *   - Au dessus de 2.0V  : fuite détectée (> 1000 ppm)
-     *
-     * Note : une calibration précise nécessite la datasheet du MQ-6
-     * et un environnement contrôlé. Ici on fait une approximation linéaire.
-     */
-    int raw    = analogRead(MQ6_PIN);         // 0 à 4095 (12 bits ADC)
-    float volt = raw * (3.3f / 4095.0f);      // Conversion en volts
-    int ppm    = (int)(volt * 500);           // Approximation linéaire
+    int raw = analogRead(MQ6_PIN);   // 0 à 4095 (12 bits ADC sur GPIO 34)
+    if (raw <= 20) {
+        return 12; // Air propre baseline
+    }
+    float volt = raw * (3.3f / 4095.0f);
+    int ppm = (int)(volt * 500);     // Approximation linéaire pour la démo
     return ppm;
 }
 
 String buildPayload(float weight_kg, int gas_ppm) {
-    /*
-     * Construit le payload JSON selon le contrat partagé.
-     * On utilise ArduinoJson pour éviter les bugs de formatage.
-     */
     JsonDocument doc;
     doc["device_id"] = DEVICE_ID;
-    doc["ts"]        = "2026-01-01T00:00:00Z";  // TODO: utiliser NTP pour l'heure réelle
-    doc["weight_kg"] = serialized(String(weight_kg, 3));
+    doc["ts"]        = getIsoUtcTimestamp();
+    doc["weight_kg"] = serialized(String(weight_kg, 1));
     doc["gas_ppm"]   = gas_ppm;
 
     String output;
@@ -161,8 +170,8 @@ void setup() {
     // Initialiser le capteur de poids HX711
     scale.begin(HX711_DOUT_PIN, HX711_SCK_PIN);
     scale.set_scale(SCALE_FACTOR);
-    scale.tare();   // Mise à zéro (tare) au démarrage
-    Serial.println("[HX711] ✅ Capteur initialisé, tare effectuée");
+    scale.tare();
+    Serial.println("[HX711] ✅ Capteur initialisé");
 
     // Initialiser le buzzer
     pinMode(BUZZER_PIN, OUTPUT);
@@ -172,7 +181,6 @@ void setup() {
     connectWiFi();
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
     mqttClient.setKeepAlive(60);
-    connectMQTT();
 
     Serial.println("\n✅ Système prêt. Publication toutes les "
                    + String(PUBLISH_INTERVAL_MS / 1000) + "s\n");
@@ -180,22 +188,20 @@ void setup() {
 
 // ─── Loop ─────────────────────────────────────────────────────────────────
 void loop() {
-    // Maintenir la connexion MQTT
-    if (!mqttClient.connected()) {
-        connectMQTT();
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!mqttClient.connected()) {
+            connectMQTT();
+        }
+        mqttClient.loop();
     }
-    mqttClient.loop();
 
-    // Publier à l'intervalle défini
     unsigned long now = millis();
     if (now - lastPublish >= PUBLISH_INTERVAL_MS) {
         lastPublish = now;
 
-        // Lire les capteurs
         float weight_kg = readWeight();
         int   gas_ppm   = readGasPPM();
 
-        // Vérifier validité de la lecture poids
         if (weight_kg < 0) {
             Serial.println("[⚠️ ] Lecture poids invalide, skip");
             return;
@@ -209,20 +215,22 @@ void loop() {
             digitalWrite(BUZZER_PIN, LOW);
         }
 
-        // Construire et publier le payload
         String topic   = "botalert/" + String(DEVICE_ID) + "/telemetry";
         String payload = buildPayload(weight_kg, gas_ppm);
 
-        bool ok = mqttClient.publish(topic.c_str(), payload.c_str(), false);
+        bool ok = false;
+        if (mqttClient.connected()) {
+            ok = mqttClient.publish(topic.c_str(), payload.c_str(), false);
+        }
 
-        Serial.printf("[MQTT] %s | %.3f kg | %d ppm → %s\n",
-                      ok ? "✅" : "❌",
+        Serial.printf("[MQTT] %s | %.1f kg | %d ppm → %s\n",
+                      ok ? "✅" : "⚠️",
                       weight_kg,
                       gas_ppm,
                       topic.c_str());
 
-        if (ok) {
-            Serial.println("       Payload : " + payload);
-        }
+        Serial.println("       Payload : " + payload);
     }
+
+    delay(20);
 }

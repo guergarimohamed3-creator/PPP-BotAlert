@@ -87,7 +87,12 @@ botalert/
 ├── firmware/              # Code source ESP32 PlatformIO (ElMehdi)
 │   ├── src/main.cpp
 │   ├── include/config.h
+│   ├── diagram.json       # Schéma de simulation Wokwi
+│   ├── wokwi.toml
 │   └── platformio.ini
+├── hardware/              # Dossier de conception matérielle (ElMehdi)
+│   ├── BOM_HARDWARE_PLAN.md # Liste des composants, budget MAD et demande au labo
+│   └── WIRING_DIAGRAM.md  # Schéma de câblage et brochage GPIO/ADC1
 ├── infra/                 # Configuration de l'infrastructure
 │   ├── mosquitto/         # mosquitto.conf
 │   ├── timescaledb/       # init.sql (hypertables readings & alerts)

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 fleet_test.py — Script de test de charge (Fleet Mode)
 ======================================================

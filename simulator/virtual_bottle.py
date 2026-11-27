@@ -43,7 +43,14 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 
-import paho.mqtt.client as mqtt
+try:
+    import paho.mqtt.client as mqtt
+
+    HAVE_PAHO = True
+except ImportError:
+    mqtt = None
+    HAVE_PAHO = False
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -153,10 +160,16 @@ def is_broker_available(host: str, port: int, timeout: float = 0.8) -> bool:
         return False
 
 
-def connect_mqtt(
-    host: str, port: int, client_id: str
-) -> tuple[mqtt.Client | None, bool]:
+def connect_mqtt(host: str, port: int, client_id: str) -> tuple[object | None, bool]:
     """Tente de connecter le client MQTT avec détection hors-ligne propre."""
+    if not HAVE_PAHO:
+        log.warning("⚠️  Bibliothèque 'paho-mqtt' non installée.")
+        log.info("💡 Exécutez : pip install paho-mqtt pour publier sur le réseau.")
+        log.info(
+            "   Mode autonome actif : la simulation tourne en direct dans le terminal.\n"
+        )
+        return None, False
+
     if not is_broker_available(host, port):
         log.warning(f"⚠️  Broker MQTT injoignable sur {host}:{port}")
         log.info(
